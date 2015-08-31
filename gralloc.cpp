@@ -32,6 +32,8 @@
 #include "gralloc_drm.h"
 #include "gralloc_drm_priv.h"
 
+static pthread_mutex_t gralloc_lock = PTHREAD_MUTEX_INITIALIZER;
+
 /*
  * Initialize the DRM device object
  */
@@ -88,13 +90,23 @@ static int drm_mod_register_buffer(const gralloc_module_t *mod,
 	if (err)
 		return err;
 
-	return gralloc_drm_handle_register(handle, dmod->drm);
+	pthread_mutex_lock(&gralloc_lock);
+	err = gralloc_drm_handle_register(handle, dmod->drm);
+	pthread_mutex_unlock(&gralloc_lock);
+
+	return err;
 }
 
 static int drm_mod_unregister_buffer(const gralloc_module_t *mod,
 		buffer_handle_t handle)
 {
-	return gralloc_drm_handle_unregister(handle);
+	int err;
+
+	pthread_mutex_lock(&gralloc_lock);
+	err = gralloc_drm_handle_unregister(handle);
+	pthread_mutex_unlock(&gralloc_lock);
+
+	return err;
 }
 
 static int drm_mod_lock(const gralloc_module_t *mod, buffer_handle_t handle,
@@ -103,25 +115,40 @@ static int drm_mod_lock(const gralloc_module_t *mod, buffer_handle_t handle,
 	struct gralloc_drm_bo_t *bo;
 	int err;
 
-	bo = gralloc_drm_bo_from_handle(handle);
-	if (!bo)
-		return -EINVAL;
+	pthread_mutex_lock(&gralloc_lock);
 
-	return gralloc_drm_bo_lock(bo, usage, x, y, w, h, ptr);
+	bo = gralloc_drm_bo_from_handle(handle);
+	if (!bo) {
+		err = -EINVAL;
+		goto unlock;
+	}
+
+	err = gralloc_drm_bo_lock(bo, usage, x, y, w, h, ptr);
+
+unlock:
+	pthread_mutex_unlock(&gralloc_lock);
+	return err;
 }
 
 static int drm_mod_unlock(const gralloc_module_t *mod, buffer_handle_t handle)
 {
 	struct drm_module_t *dmod = (struct drm_module_t *) mod;
 	struct gralloc_drm_bo_t *bo;
+	int err = 0;
+
+	pthread_mutex_lock(&gralloc_lock);
 
 	bo = gralloc_drm_bo_from_handle(handle);
-	if (!bo)
-		return -EINVAL;
+	if (!bo) {
+		err = -EINVAL;
+		goto unlock;
+	}
 
 	gralloc_drm_bo_unlock(bo);
 
-	return 0;
+unlock:
+	pthread_mutex_unlock(&gralloc_lock);
+	return err;
 }
 
 static int drm_mod_close_gpu0(struct hw_device_t *dev)
@@ -139,14 +166,21 @@ static int drm_mod_free_gpu0(alloc_device_t *dev, buffer_handle_t handle)
 {
 	struct drm_module_t *dmod = (struct drm_module_t *) dev->common.module;
 	struct gralloc_drm_bo_t *bo;
+	int err = 0;
+
+	pthread_mutex_lock(&gralloc_lock);
 
 	bo = gralloc_drm_bo_from_handle(handle);
-	if (!bo)
-		return -EINVAL;
+	if (!bo) {
+		err = -EINVAL;
+		goto unlock;
+	}
 
 	gralloc_drm_bo_decref(bo);
 
-	return 0;
+unlock:
+	pthread_mutex_unlock(&gralloc_lock);
+	return err;
 }
 
 static int drm_mod_alloc_gpu0(alloc_device_t *dev,
@@ -155,21 +189,27 @@ static int drm_mod_alloc_gpu0(alloc_device_t *dev,
 {
 	struct drm_module_t *dmod = (struct drm_module_t *) dev->common.module;
 	struct gralloc_drm_bo_t *bo;
-	int size, bpp, err;
+	int size, bpp, err = 0;
 
 	bpp = gralloc_drm_get_bpp(format);
 	if (!bpp)
 		return -EINVAL;
 
+	pthread_mutex_lock(&gralloc_lock);
+
 	bo = gralloc_drm_bo_create(dmod->drm, w, h, format, usage);
-	if (!bo)
-		return -ENOMEM;
+	if (!bo) {
+		err = -ENOMEM;
+		goto unlock;
+	}
 
 	*handle = gralloc_drm_bo_get_handle(bo, stride);
 	/* in pixels */
 	*stride /= bpp;
 
-	return 0;
+unlock:
+	pthread_mutex_unlock(&gralloc_lock);
+	return err;
 }
 
 static int drm_mod_open_gpu0(struct drm_module_t *dmod, hw_device_t **dev)
