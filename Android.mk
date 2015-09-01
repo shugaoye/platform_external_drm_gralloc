@@ -116,7 +116,7 @@ endif
 
 ifneq ($(filter $(pipe_drivers), $(DRM_GPU_DRIVERS)),)
 LOCAL_SRC_FILES += gralloc_drm_pipe.c
-LOCAL_CFLAGS += -DENABLE_PIPE
+LOCAL_CFLAGS += -DENABLE_PIPE -DDMABUF
 LOCAL_CONLYFLAGS += -std=c99
 LOCAL_C_INCLUDES += \
 	external/mesa3d/include \
