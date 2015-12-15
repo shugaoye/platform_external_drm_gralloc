@@ -97,6 +97,9 @@ LOCAL_SHARED_LIBRARIES := \
 	libhardware_legacy \
 	libutils
 
+LOCAL_EXPORT_C_INCLUDE_DIRS := \
+	$(LOCAL_PATH)
+
 ifneq ($(filter $(intel_drivers), $(DRM_GPU_DRIVERS)),)
 LOCAL_SRC_FILES += gralloc_drm_intel.c
 LOCAL_C_INCLUDES += external/libdrm/intel
