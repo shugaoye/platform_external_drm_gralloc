@@ -86,10 +86,6 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_SRC_FILES := \
 	gralloc_drm.cpp
 
-LOCAL_C_INCLUDES := \
-	external/libdrm \
-	external/libdrm/include/drm
-
 LOCAL_SHARED_LIBRARIES := \
 	libdrm \
 	liblog \
@@ -102,21 +98,18 @@ LOCAL_EXPORT_C_INCLUDE_DIRS := \
 
 ifneq ($(filter $(intel_drivers), $(DRM_GPU_DRIVERS)),)
 LOCAL_SRC_FILES += gralloc_drm_intel.c
-LOCAL_C_INCLUDES += external/libdrm/intel
 LOCAL_CFLAGS += -DENABLE_INTEL
 LOCAL_SHARED_LIBRARIES += libdrm_intel
 endif
 
 ifneq ($(filter $(radeon_drivers), $(DRM_GPU_DRIVERS)),)
 LOCAL_SRC_FILES += gralloc_drm_radeon.c
-LOCAL_C_INCLUDES += external/libdrm/radeon
 LOCAL_CFLAGS += -DENABLE_RADEON
 LOCAL_SHARED_LIBRARIES += libdrm_radeon
 endif
 
 ifneq ($(filter $(nouveau_drivers), $(DRM_GPU_DRIVERS)),)
 LOCAL_SRC_FILES += gralloc_drm_nouveau.c
-LOCAL_C_INCLUDES += external/libdrm/nouveau
 LOCAL_CFLAGS += -DENABLE_NOUVEAU
 LOCAL_SHARED_LIBRARIES += libdrm_nouveau
 endif
@@ -166,12 +159,9 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := \
 	gralloc.cpp
 
-LOCAL_C_INCLUDES := \
-	external/libdrm \
-	external/libdrm/include/drm
-
 LOCAL_SHARED_LIBRARIES := \
 	libgralloc_drm \
+	libdrm \
 	liblog \
 	libutils
 
