@@ -130,6 +130,7 @@ endif
 ifeq ($(strip $(DRM_USES_PIPE)),true)
 LOCAL_SRC_FILES += gralloc_drm_pipe.c
 LOCAL_CFLAGS += -DENABLE_PIPE
+LOCAL_CONLYFLAGS += -std=c99
 LOCAL_C_INCLUDES += \
 	external/mesa/include \
 	external/mesa/src/gallium/include \
@@ -157,6 +158,7 @@ LOCAL_STATIC_LIBRARIES += \
 	libmesa_gallium
 LOCAL_SHARED_LIBRARIES += libdl
 endif # DRM_USES_PIPE
+
 include $(BUILD_SHARED_LIBRARY)
 
 
