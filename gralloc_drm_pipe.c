@@ -75,7 +75,7 @@ static enum pipe_format get_pipe_format(int format)
 		fmt = PIPE_FORMAT_B8G8R8A8_UNORM;
 		break;
 	case HAL_PIXEL_FORMAT_YV12:
-	case HAL_PIXEL_FORMAT_DRM_NV12:
+	//case HAL_PIXEL_FORMAT_DRM_NV12:
 	case HAL_PIXEL_FORMAT_YCbCr_422_SP:
 	case HAL_PIXEL_FORMAT_YCrCb_420_SP:
 	default:
@@ -230,7 +230,7 @@ static int pipe_map(struct gralloc_drm_drv_t *drv,
 
 	/* need a context to get transfer */
 	if (!pm->context) {
-		pm->context = pm->screen->context_create(pm->screen, NULL);
+		pm->context = pm->screen->context_create(pm->screen, NULL, 0);
 		if (!pm->context) {
 			ALOGE("failed to create pipe context");
 			err = -ENOMEM;
