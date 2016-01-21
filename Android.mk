@@ -175,10 +175,6 @@ LOCAL_SHARED_LIBRARIES := \
 	liblog \
 	libutils
 
-# for glFlush/glFinish
-LOCAL_SHARED_LIBRARIES += \
-	libGLESv1_CM
-
 LOCAL_MODULE := gralloc.drm
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_RELATIVE_PATH := hw
