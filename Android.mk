@@ -27,15 +27,15 @@ intel_drivers := i915 i965 i915g ilo
 radeon_drivers := r300g r600g
 rockchip_drivers := rockchip
 nouveau_drivers := nouveau
-vmwgfx_drivers := vmwgfx
+pipe_drivers := freedreno virgl vmwgfx
 
 valid_drivers := \
 	prebuilt \
+	$(pipe_drivers) \
 	$(intel_drivers) \
 	$(radeon_drivers) \
 	$(rockchip_drivers) \
-	$(nouveau_drivers) \
-	$(vmwgfx_drivers)
+	$(nouveau_drivers)
 
 # warn about invalid drivers
 invalid_drivers := $(filter-out $(valid_drivers), $(DRM_GPU_DRIVERS))
@@ -43,12 +43,6 @@ ifneq ($(invalid_drivers),)
 $(warning invalid GPU drivers: $(invalid_drivers))
 # tidy up
 DRM_GPU_DRIVERS := $(filter-out $(invalid_drivers), $(DRM_GPU_DRIVERS))
-endif
-
-ifneq ($(filter $(vmwgfx_drivers), $(DRM_GPU_DRIVERS)),)
-DRM_USES_PIPE := true
-else
-DRM_USES_PIPE := false
 endif
 
 ifneq ($(strip $(DRM_GPU_DRIVERS)),)
@@ -120,37 +114,22 @@ LOCAL_CFLAGS += -DENABLE_ROCKCHIP
 LOCAL_SHARED_LIBRARIES += libdrm_rockchip
 endif
 
-ifeq ($(strip $(DRM_USES_PIPE)),true)
+ifneq ($(filter $(pipe_drivers), $(DRM_GPU_DRIVERS)),)
 LOCAL_SRC_FILES += gralloc_drm_pipe.c
 LOCAL_CFLAGS += -DENABLE_PIPE
 LOCAL_CONLYFLAGS += -std=c99
 LOCAL_C_INCLUDES += \
-	external/mesa/include \
-	external/mesa/src/gallium/include \
-	external/mesa/src/gallium/winsys \
-	external/mesa/src/gallium/drivers \
-	external/mesa/src/gallium/auxiliary
-
-ifneq ($(filter r600g, $(DRM_GPU_DRIVERS)),)
-LOCAL_CFLAGS += -DENABLE_PIPE_R600
-LOCAL_STATIC_LIBRARIES += \
-	libmesa_pipe_r600 \
-	libmesa_pipe_radeon \
-	libmesa_winsys_radeon
-endif
-ifneq ($(filter vmwgfx, $(DRM_GPU_DRIVERS)),)
-LOCAL_CFLAGS += -DENABLE_PIPE_VMWGFX
-LOCAL_STATIC_LIBRARIES += \
-	libmesa_pipe_svga \
-	libmesa_winsys_svga
-LOCAL_C_INCLUDES += \
-	external/mesa/src/gallium/drivers/svga/include
-endif
+	external/mesa3d/include \
+	external/mesa3d/src \
+	external/mesa3d/src/gallium/include \
+	external/mesa3d/src/gallium/auxiliary
 
 LOCAL_STATIC_LIBRARIES += \
-	libmesa_gallium
+	libmesa_gallium \
+	libmesa_util \
+
 LOCAL_SHARED_LIBRARIES += libdl
-endif # DRM_USES_PIPE
+endif # pipe_drivers
 
 include $(BUILD_SHARED_LIBRARY)
 
