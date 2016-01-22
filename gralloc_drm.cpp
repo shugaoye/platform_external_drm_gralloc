@@ -227,7 +227,7 @@ static struct gralloc_drm_handle_t *create_bo_handle(int width,
 {
 	struct gralloc_drm_handle_t *handle;
 
-	handle = new gralloc_drm_handle_t;
+	handle = new gralloc_drm_handle_t();
 	if (!handle)
 		return NULL;
 
