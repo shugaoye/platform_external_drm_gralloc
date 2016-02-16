@@ -119,9 +119,6 @@ LOCAL_C_INCLUDES += \
 	external/mesa3d/src/gallium/include \
 	external/mesa3d/src/gallium/auxiliary
 
-LOCAL_STATIC_LIBRARIES += \
-	libmesa_gallium \
-	libmesa_util \
 
 LOCAL_SHARED_LIBRARIES += libdl
 endif # pipe_drivers
