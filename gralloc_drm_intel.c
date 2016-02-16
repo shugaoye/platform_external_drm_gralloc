@@ -39,6 +39,7 @@
 
 #include "gralloc_drm.h"
 #include "gralloc_drm_priv.h"
+#include "gralloc_drm_formats.h"
 
 #define MI_NOOP                     (0)
 #define MI_BATCH_BUFFER_END         (0x0a << 23)
