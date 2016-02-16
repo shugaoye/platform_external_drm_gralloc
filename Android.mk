@@ -27,22 +27,17 @@ freedreno_drivers := freedreno
 intel_drivers := i915 i965 i915g ilo
 radeon_drivers := r300g r600g radeonsi
 nouveau_drivers := nouveau
-pipe_drivers := freedreno virgl vmwgfx
 
 valid_drivers := \
 	prebuilt \
-	$(pipe_drivers) \
 	$(freedreno_drivers) \
 	$(intel_drivers) \
 	$(radeon_drivers) \
 	$(nouveau_drivers)
 
-# warn about invalid drivers
-invalid_drivers := $(filter-out $(valid_drivers), $(DRM_GPU_DRIVERS))
-ifneq ($(invalid_drivers),)
-$(warning invalid GPU drivers: $(invalid_drivers))
-# tidy up
-DRM_GPU_DRIVERS := $(filter-out $(invalid_drivers), $(DRM_GPU_DRIVERS))
+# Assume other driver names are pipe drivers
+ifneq ($(filter-out $(valid_drivers), $(DRM_GPU_DRIVERS)),)
+DRM_GPU_DRIVERS += pipe
 endif
 
 ifneq ($(strip $(DRM_GPU_DRIVERS)),)
@@ -116,7 +111,7 @@ LOCAL_CFLAGS += -DENABLE_NOUVEAU
 LOCAL_SHARED_LIBRARIES += libdrm_nouveau
 endif
 
-ifneq ($(filter $(pipe_drivers), $(DRM_GPU_DRIVERS)),)
+ifneq ($(filter pipe, $(DRM_GPU_DRIVERS)),)
 LOCAL_SRC_FILES += gralloc_drm_pipe.c
 LOCAL_CFLAGS += -DENABLE_PIPE
 LOCAL_C_INCLUDES += \
