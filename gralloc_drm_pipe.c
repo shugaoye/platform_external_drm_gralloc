@@ -353,14 +353,8 @@ static void pipe_init_kms_features(struct gralloc_drm_drv_t *drv, struct gralloc
 		break;
 	}
 
-	if (strcmp(pm->driver, "vmwgfx") == 0) {
-		drm->mode_quirk_vmwgfx = 1;
-		drm->swap_mode = DRM_SWAP_COPY;
-	}
-	else {
-		drm->mode_quirk_vmwgfx = 0;
-		drm->swap_mode = DRM_SWAP_FLIP;
-	}
+	drm->mode_quirk_vmwgfx = 0;
+	drm->swap_mode = DRM_SWAP_FLIP;
 	drm->mode_sync_flip = 1;
 	drm->swap_interval = 1;
 	drm->vblank_secondary = 0;
