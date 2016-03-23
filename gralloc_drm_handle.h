@@ -51,12 +51,11 @@ struct gralloc_drm_handle_t {
 	int name;   /* the name of the bo */
 	int stride; /* the stride in bytes */
 
+	int data_owner; /* owner of data (for validation) */
 	union {
 		struct gralloc_drm_bo_t *data; /* pointer to struct gralloc_drm_bo_t */
 		uint64_t reserved;
-	};
-
-	int data_owner; /* owner of data (for validation) */
+	} __attribute__((aligned(8)));
 };
 #define GRALLOC_DRM_HANDLE_MAGIC 0x12345678
 #define GRALLOC_DRM_HANDLE_NUM_FDS 1
