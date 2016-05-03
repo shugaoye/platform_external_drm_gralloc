@@ -46,11 +46,13 @@
 #define MI_FLUSH_DW                 (0x26 << 23)
 #define MI_WRITE_DIRTY_STATE        (1 << 4) 
 #define MI_INVALIDATE_MAP_CACHE     (1 << 0)
-#define XY_SRC_COPY_BLT_CMD         ((2 << 29) | (0x53 << 22) | 6)
+#define XY_SRC_COPY_BLT_CMD         ((2 << 29) | (0x53 << 22))
 #define XY_SRC_COPY_BLT_WRITE_ALPHA (1 << 21)
 #define XY_SRC_COPY_BLT_WRITE_RGB   (1 << 20)
 #define XY_SRC_COPY_BLT_SRC_TILED   (1 << 15)
 #define XY_SRC_COPY_BLT_DST_TILED   (1 << 11)
+
+#define DEBUG_BLT 0
 
 struct intel_info {
 	struct gralloc_drm_drv_t base;
@@ -109,6 +111,24 @@ batch_reloc(struct intel_info *info, struct gralloc_drm_bo_t *bo,
 			target->ibo, 0, read_domains, write_domain);
 	if (!ret)
 		batch_dword(info, target->ibo->offset);
+
+	return ret;
+}
+
+static int
+batch_reloc64(struct intel_info *info, struct gralloc_drm_bo_t *bo,
+		uint32_t read_domains, uint32_t write_domain)
+{
+	struct intel_buffer *target = (struct intel_buffer *) bo;
+	uint32_t offset = (info->cur - info->batch) * sizeof(info->batch[0]);
+	int ret;
+
+	ret = drm_intel_bo_emit_reloc(info->batch_ibo, offset,
+			target->ibo, 0, read_domains, write_domain);
+	if (!ret) {
+		batch_dword(info, target->ibo->offset64);
+		batch_dword(info, target->ibo->offset64 >> 32);
+	}
 
 	return ret;
 }
@@ -333,17 +353,33 @@ static void intel_blit(struct gralloc_drm_drv_t *drv,
 		}
 	}
 
-	if (batch_reserve(info, 8))
+	unsigned length = (info->gen >= 80) ? 10 : 8;
+	if (batch_reserve(info, length))
 		return;
 
-	batch_dword(info, cmd);
+	ALOGD_IF(DEBUG_BLT, "running batch commands, gen=%d tiling: [%d, %d]. dst=[%d, %d, %d, %d], "
+			"src=[%d, %d, %d, %d], pitch=[%d, %d]",
+			info->gen, dst_ib->tiling, src_ib->tiling,
+			dst_x1, dst_y1, dst_x2, dst_y2,
+			src_x1, src_y1, src_x2, src_y2,
+			dst_pitch, src_pitch);
+
+	batch_dword(info, cmd | (length - 2));
 	batch_dword(info, br13 | (uint16_t)dst_pitch);
 	batch_dword(info, (dst_y1 << 16) | dst_x1);
 	batch_dword(info, (dst_y2 << 16) | dst_x2);
-	batch_reloc(info, dst, I915_GEM_DOMAIN_RENDER, I915_GEM_DOMAIN_RENDER);
+	if (info->gen >= 80) {
+		batch_reloc64(info, dst, I915_GEM_DOMAIN_RENDER, I915_GEM_DOMAIN_RENDER);
+	} else {
+		batch_reloc(info, dst, I915_GEM_DOMAIN_RENDER, I915_GEM_DOMAIN_RENDER);
+	}
 	batch_dword(info, (src_y1 << 16) | src_x1);
 	batch_dword(info, (uint16_t)src_pitch);
-	batch_reloc(info, src, I915_GEM_DOMAIN_RENDER, 0);
+	if (info->gen >= 80) {
+		batch_reloc64(info, src, I915_GEM_DOMAIN_RENDER, 0);
+	} else {
+		batch_reloc(info, src, I915_GEM_DOMAIN_RENDER, 0);
+	}
 
 	if (info->gen >= 60) {
 		batch_reserve(info, 4);
@@ -601,7 +637,11 @@ static void intel_init_kms_features(struct gralloc_drm_drv_t *drv,
 
 	/* GEN4, G4X, GEN5, GEN6, GEN7 */
 	if ((IS_9XX(id) || IS_G4X(id)) && !IS_GEN3(id)) {
-		if (IS_GEN7(id))
+		if (IS_GEN9(id))
+			info->gen = 90;
+		else if (IS_GEN8(id))
+			info->gen = 80;
+		else if (IS_GEN7(id))
 			info->gen = 70;
 		else if (IS_GEN6(id))
 			info->gen = 60;

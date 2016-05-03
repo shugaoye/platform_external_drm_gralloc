@@ -986,9 +986,14 @@ static void init_hdmi_output(struct gralloc_drm_t *drm,
 	drm->hdmi.bo = gralloc_drm_bo_create(drm,
 		drm->hdmi.mode.hdisplay, drm->hdmi.mode.vdisplay,
 		drm->hdmi.fb_format,
-		GRALLOC_USAGE_SW_WRITE_OFTEN|GRALLOC_USAGE_HW_RENDER);
+		GRALLOC_USAGE_HW_RENDER);
 
-	gralloc_drm_bo_add_fb(drm->hdmi.bo);
+	int err = gralloc_drm_bo_add_fb(drm->hdmi.bo);
+	if (err) {
+		ALOGE("%s: could not create drm fb, (%s)",
+			__func__, strerror(-err));
+		return err;
+	}
 
 	drm->hdmi_mode = HDMI_CLONED;
 	drm->hdmi.active = 1;
