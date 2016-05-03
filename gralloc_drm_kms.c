@@ -38,6 +38,61 @@
 
 #include <drm_fourcc.h>
 
+struct uevent {
+	const char *action;
+	const char *path;
+	const char *subsystem;
+	const char *device_name;
+	int major;
+	int minor;
+	int hotplug;
+	int switchstate;
+};
+
+static void parse_event(const char *msg, struct uevent *uevent)
+{
+	uevent->action = "";
+	uevent->path = "";
+	uevent->subsystem = "";
+	uevent->major = -1;
+	uevent->minor = -1;
+	uevent->device_name = "";
+	uevent->hotplug = 0;
+	uevent->switchstate = -1;
+
+	while (*msg) {
+		if (!strncmp(msg, "ACTION=", 7)) {
+			msg += 7;
+			uevent->action = msg;
+		} else if (!strncmp(msg, "DEVPATH=", 8)) {
+			msg += 8;
+			uevent->path = msg;
+		} else if (!strncmp(msg, "SUBSYSTEM=", 10)) {
+			msg += 10;
+			uevent->subsystem = msg;
+		} else if (!strncmp(msg, "MAJOR=", 6)) {
+			msg += 6;
+			uevent->major = atoi(msg);
+		} else if (!strncmp(msg, "MINOR=", 6)) {
+			msg += 6;
+			uevent->minor = atoi(msg);
+		} else if (!strncmp(msg, "DEVNAME=", 8)) {
+			msg += 8;
+			uevent->device_name = msg;
+		} else if (!strncmp(msg, "HOTPLUG=1", 9)) {
+			msg += 9;
+			uevent->hotplug = 1;
+		} else if (!strncmp(msg, "SWITCH_STATE=", 13)) {
+			msg += 13;
+			uevent->switchstate = atoi(msg);
+		}
+
+		/* advance to after the next \0 */
+		while (*msg++)
+			;
+	}
+}
+
 /*
  * Return true if a bo needs fb.
  */
@@ -381,6 +436,33 @@ int gralloc_drm_set_plane_handle(struct gralloc_drm_t *drm,
 	return -EINVAL;
 }
 
+static int drm_kms_blit_to_hdmi(struct gralloc_drm_t *drm, struct gralloc_drm_bo_t *bo)
+{
+	int ret = 0;
+	if (drm->hdmi.active && drm->hdmi_mode == HDMI_CLONED && drm->hdmi.bo) {
+
+		int dst_x1 = 0, dst_y1 = 0;
+
+		if (drm->hdmi.bo->handle->width > bo->handle->width)
+			dst_x1 = (drm->hdmi.bo->handle->width - bo->handle->width) / 2;
+		if (drm->hdmi.bo->handle->height > bo->handle->height)
+			dst_y1 = (drm->hdmi.bo->handle->height - bo->handle->height) / 2;
+
+		drm->drv->blit(drm->drv, drm->hdmi.bo, bo,
+				dst_x1, dst_y1,
+				dst_x1 + bo->handle->width,
+				dst_y1 + bo->handle->height,
+				0, 0, bo->handle->width, bo->handle->height);
+
+		ret = drmModePageFlip(drm->fd, drm->hdmi.crtc_id, drm->hdmi.bo->fb_id, 0, NULL);
+		if (ret && errno != EBUSY)
+			ALOGE("failed to perform page flip for hdmi (%s) (crtc %d fb %d))",
+					strerror(errno), drm->hdmi.crtc_id, drm->hdmi.bo->fb_id);
+	}
+
+	return ret;
+}
+
 /*
  * Schedule a page flip.
  */
@@ -406,26 +488,7 @@ static int drm_kms_page_flip(struct gralloc_drm_t *drm,
 		return 0;
 
 	pthread_mutex_lock(&drm->hdmi_mutex);
-	if (drm->hdmi.active && drm->hdmi_mode == HDMI_CLONED && drm->hdmi.bo) {
-
-		int dst_x1 = 0, dst_y1 = 0;
-
-		if (drm->hdmi.bo->handle->width > bo->handle->width)
-			dst_x1 = (drm->hdmi.bo->handle->width - bo->handle->width) / 2;
-		if (drm->hdmi.bo->handle->height > bo->handle->height)
-			dst_y1 = (drm->hdmi.bo->handle->height - bo->handle->height) / 2;
-
-		drm->drv->blit(drm->drv, drm->hdmi.bo, bo,
-			dst_x1, dst_y1,
-			dst_x1 + bo->handle->width,
-			dst_y1 + bo->handle->height,
-			0, 0, bo->handle->width, bo->handle->height);
-
-		ret = drmModePageFlip(drm->fd, drm->hdmi.crtc_id, drm->hdmi.bo->fb_id, 0, NULL);
-		if (ret && errno != EBUSY)
-			ALOGE("failed to perform page flip for hdmi (%s) (crtc %d fb %d))",
-				strerror(errno), drm->hdmi.crtc_id, drm->hdmi.bo->fb_id);
-	}
+	drm_kms_blit_to_hdmi(drm, bo);
 	pthread_mutex_unlock(&drm->hdmi_mutex);
 
 	/* set planes to be displayed */
@@ -975,7 +1038,7 @@ static drmModeConnectorPtr fetch_connector(struct gralloc_drm_t *drm,
  * a private framebuffer for it. This is called on startup if
  * hdmi cable is connected and also on hotplug events.
  */
-static void init_hdmi_output(struct gralloc_drm_t *drm,
+static int init_hdmi_output(struct gralloc_drm_t *drm,
 	drmModeConnectorPtr connector)
 {
 	drm_kms_init_with_connector(drm, &drm->hdmi, connector);
@@ -997,6 +1060,8 @@ static void init_hdmi_output(struct gralloc_drm_t *drm,
 
 	drm->hdmi_mode = HDMI_CLONED;
 	drm->hdmi.active = 1;
+
+	return 0;
 }
 
 
@@ -1009,6 +1074,7 @@ static void *hdmi_observer(void *data)
 	drmModeConnectorPtr hdmi;
 	struct gralloc_drm_t *drm =
 		(struct gralloc_drm_t *) data;
+	struct uevent event;
 
 	uevent_init();
 
@@ -1018,56 +1084,64 @@ static void *hdmi_observer(void *data)
 
 		/* this polls */
 		int len = uevent_next_event(uevent_desc, sizeof(uevent_desc) - 2);
+		if (!len) continue;
 
-		if(len && strstr(uevent_desc, "devices/virtual/switch/hdmi")) {
+		parse_event(uevent_desc, &event);
+		ALOGD_IF(0, "event { '%s', '%s', '%s', %d, %d, %d, %d }\n",
+				event.action, event.path, event.subsystem,
+				event.major, event.minor,
+				event.switchstate, event.hotplug);
 
-			/* check what changed */
-			const char *prop = uevent_desc + strlen(uevent_desc) + 1;
+		if (!strcmp(event.path, "devices/virtual/switch/hdmi")) {
+			if (event.switchstate != -1) {
+				pthread_mutex_lock(&drm->hdmi_mutex);
 
-			while (*prop) {
+				if (event.switchstate) {
+					hdmi = fetch_connector(drm, DRM_MODE_CONNECTOR_HDMIA);
+					if (hdmi) {
+						ALOGD("init hdmi on switch_state event");
+						init_hdmi_output(drm, hdmi);
 
-				const char *state = strstr(prop, "SWITCH_STATE=");
-				if (state) {
-					unsigned int value = 0;
-					state += strlen("SWITCH_STATE=");
-					value = atoi(state);
+						/* will trigger modeset */
+						drm->first_post = 1;
 
-					pthread_mutex_lock(&drm->hdmi_mutex);
-
-					if (value) {
-						hdmi = fetch_connector(drm, DRM_MODE_CONNECTOR_HDMIA);
-						if (hdmi) {
-
-							ALOGD("init hdmi on hotplug event");
-							init_hdmi_output(drm, hdmi);
-
-							/* will trigger modeset */
-							drm->first_post = 1;
-
-							drmModeFreeConnector(hdmi);
-
-							pthread_mutex_unlock(&drm->hdmi_mutex);
-						}
-						break;
-					} else {
-						drm->hdmi.active = 0;
-
-						ALOGD("destroy hdmi private buffer");
-						gralloc_drm_bo_decref(drm->hdmi.bo);
-						drm->hdmi.bo = NULL;
-
-						pthread_mutex_unlock(&drm->hdmi_mutex);
-						break;
+						drmModeFreeConnector(hdmi);
 					}
+				} else {
+					drm->hdmi.active = 0;
 
-					pthread_mutex_unlock(&drm->hdmi_mutex);
+					ALOGD("destroy hdmi private buffer");
+					gralloc_drm_bo_decref(drm->hdmi.bo);
+					drm->hdmi.bo = NULL;
 				}
 
-				/* next property/value pair */
-				prop += strlen(prop) + 1;
-				if (prop - uevent_desc >= len)
-					break;
+				pthread_mutex_unlock(&drm->hdmi_mutex);
 			}
+		} else if (!strcmp(event.subsystem, "drm") &&
+				!strcmp(event.device_name, "dri/card0") && event.hotplug) {
+			pthread_mutex_lock(&drm->hdmi_mutex);
+
+			hdmi = fetch_connector(drm, DRM_MODE_CONNECTOR_HDMIA);
+			if (hdmi && !drm->hdmi.active) {
+				ALOGD("init hdmi on hotplug event");
+				if (!init_hdmi_output(drm, hdmi)) {
+					drm_kms_set_crtc(drm, &drm->hdmi, drm->hdmi.bo->fb_id);
+				}
+
+				/* will trigger modeset */
+				drm->first_post = 1;
+			} else if (!hdmi && drm->hdmi.active) {
+				drm->hdmi.active = 0;
+
+				ALOGD("destroy hdmi private buffer");
+				gralloc_drm_bo_decref(drm->hdmi.bo);
+				drm->hdmi.bo = NULL;
+			}
+
+			if (hdmi)
+				drmModeFreeConnector(hdmi);
+
+			pthread_mutex_unlock(&drm->hdmi_mutex);
 		}
 	}
 
