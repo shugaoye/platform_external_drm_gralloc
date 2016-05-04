@@ -1227,6 +1227,11 @@ int gralloc_drm_init_kms(struct gralloc_drm_t *drm)
 		}
 	}
 
+	/* HDMI mirror mode need driver support for blitting. which is not implemented for
+		drivers other than intel. skip HDMI detection for them to avoid crash
+	*/
+	if (!drm->drv->blit)
+		goto skip_hdmi_modes;
 
 	/* check if hdmi is connected already */
 	hdmi = fetch_connector(drm, DRM_MODE_CONNECTOR_HDMIA);
