@@ -42,9 +42,10 @@ enum drm_swap_mode {
 	DRM_SWAP_SETCRTC,
 };
 
-enum hdmi_output_mode {
-	HDMI_CLONED,
-	HDMI_EXTENDED,
+enum drm_output_mode {
+	DRM_OUTPUT_PRIMARY,
+	DRM_OUTPUT_CLONED,
+	DRM_OUTPUT_EXTENDED,
 };
 
 struct gralloc_drm_plane_t {
@@ -84,6 +85,8 @@ struct gralloc_drm_output
 	int bpp;
 	uint32_t active;
 
+	enum drm_output_mode output_mode;
+
 	/* 'private fb' for this output */
 	struct gralloc_drm_bo_t *bo;
 };
@@ -97,7 +100,6 @@ struct gralloc_drm_t {
 	drmModeResPtr resources;
 	struct gralloc_drm_output primary;
 	struct gralloc_drm_output hdmi;
-	enum hdmi_output_mode hdmi_mode;
 
 	/* hdmi hotplug */
 	pthread_mutex_t hdmi_mutex;

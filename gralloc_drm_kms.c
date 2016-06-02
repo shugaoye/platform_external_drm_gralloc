@@ -439,7 +439,7 @@ int gralloc_drm_set_plane_handle(struct gralloc_drm_t *drm,
 static int drm_kms_blit_to_hdmi(struct gralloc_drm_t *drm, struct gralloc_drm_bo_t *bo)
 {
 	int ret = 0;
-	if (drm->hdmi.active && drm->hdmi_mode == HDMI_CLONED && drm->hdmi.bo) {
+	if (drm->hdmi.active && drm->hdmi.output_mode == DRM_OUTPUT_CLONED && drm->hdmi.bo) {
 
 		int dst_x1 = 0, dst_y1 = 0;
 
@@ -606,7 +606,7 @@ int gralloc_drm_bo_post(struct gralloc_drm_bo_t *bo)
 		}
 
 		pthread_mutex_lock(&drm->hdmi_mutex);
-		if (drm->hdmi.active && drm->hdmi_mode == HDMI_CLONED && drm->hdmi.bo)
+		if (drm->hdmi.active && drm->hdmi.output_mode == DRM_OUTPUT_CLONED && drm->hdmi.bo)
 			drm_kms_set_crtc(drm, &drm->hdmi, drm->hdmi.bo->fb_id);
 		pthread_mutex_unlock(&drm->hdmi_mutex);
 
@@ -647,7 +647,7 @@ int gralloc_drm_bo_post(struct gralloc_drm_bo_t *bo)
 		ret = drm_kms_set_crtc(drm, &drm->primary, bo->fb_id);
 
 		pthread_mutex_lock(&drm->hdmi_mutex);
-		if (drm->hdmi.active && drm->hdmi_mode == HDMI_CLONED && drm->hdmi.bo)
+		if (drm->hdmi.active && drm->hdmi.output_mode == DRM_OUTPUT_CLONED && drm->hdmi.bo)
 			drm_kms_set_crtc(drm, &drm->hdmi, drm->hdmi.bo->fb_id);
 		pthread_mutex_unlock(&drm->hdmi_mutex);
 
@@ -1105,7 +1105,7 @@ static int init_hdmi_output(struct gralloc_drm_t *drm,
 		return err;
 	}
 
-	drm->hdmi_mode = HDMI_CLONED;
+	drm->hdmi.output_mode = DRM_OUTPUT_CLONED;
 	drm->hdmi.active = 1;
 
 	return 0;
