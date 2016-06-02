@@ -321,12 +321,12 @@ static void drm_gem_radeon_unmap(struct gralloc_drm_drv_t *drv,
 static void drm_gem_radeon_init_kms_features(struct gralloc_drm_drv_t *drv,
 		struct gralloc_drm_t *drm)
 {
-	switch (drm->primary.fb_format) {
+	switch (drm->primary->fb_format) {
 	case HAL_PIXEL_FORMAT_BGRA_8888:
 	case HAL_PIXEL_FORMAT_RGB_565:
 		break;
 	default:
-		drm->primary.fb_format = HAL_PIXEL_FORMAT_BGRA_8888;
+		drm->primary->fb_format = HAL_PIXEL_FORMAT_BGRA_8888;
 		break;
 	}
 

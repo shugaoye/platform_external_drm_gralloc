@@ -263,7 +263,7 @@ static int gralloc_drm_bo_setplane(struct gralloc_drm_t *drm,
 
 	err = drmModeSetPlane(drm->fd,
 		plane->drm_plane->plane_id,
-		drm->primary.crtc_id,
+		drm->primary->crtc_id,
 		bo ? bo->fb_id : 0,
 		0, // flags
 		plane->dst_x,
@@ -284,7 +284,7 @@ static int gralloc_drm_bo_setplane(struct gralloc_drm_t *drm,
 		ALOGE("drmModeSetPlane : error (%s) (plane %d crtc %d fb %d)",
 			strerror(-err),
 			plane->drm_plane->plane_id,
-			drm->primary.crtc_id,
+			drm->primary->crtc_id,
 			bo ? bo->fb_id : 0);
 	}
 
@@ -306,7 +306,7 @@ static unsigned is_plane_supported(const struct gralloc_drm_t *drm,
 	const struct gralloc_drm_plane_t *plane)
 {
 	/* Planes are only supported on primary pipe for now */
-	return plane->drm_plane->possible_crtcs & (1 << drm->primary.pipe);
+	return plane->drm_plane->possible_crtcs & (1 << drm->primary->pipe);
 }
 
 /*
@@ -439,25 +439,25 @@ int gralloc_drm_set_plane_handle(struct gralloc_drm_t *drm,
 static int drm_kms_blit_to_hdmi(struct gralloc_drm_t *drm, struct gralloc_drm_bo_t *bo)
 {
 	int ret = 0;
-	if (drm->hdmi.active && drm->hdmi.output_mode == DRM_OUTPUT_CLONED && drm->hdmi.bo) {
+	if (drm->hdmi->active && drm->hdmi->output_mode == DRM_OUTPUT_CLONED && drm->hdmi->bo) {
 
 		int dst_x1 = 0, dst_y1 = 0;
 
-		if (drm->hdmi.bo->handle->width > bo->handle->width)
-			dst_x1 = (drm->hdmi.bo->handle->width - bo->handle->width) / 2;
-		if (drm->hdmi.bo->handle->height > bo->handle->height)
-			dst_y1 = (drm->hdmi.bo->handle->height - bo->handle->height) / 2;
+		if (drm->hdmi->bo->handle->width > bo->handle->width)
+			dst_x1 = (drm->hdmi->bo->handle->width - bo->handle->width) / 2;
+		if (drm->hdmi->bo->handle->height > bo->handle->height)
+			dst_y1 = (drm->hdmi->bo->handle->height - bo->handle->height) / 2;
 
-		drm->drv->blit(drm->drv, drm->hdmi.bo, bo,
+		drm->drv->blit(drm->drv, drm->hdmi->bo, bo,
 				dst_x1, dst_y1,
 				dst_x1 + bo->handle->width,
 				dst_y1 + bo->handle->height,
 				0, 0, bo->handle->width, bo->handle->height);
 
-		ret = drmModePageFlip(drm->fd, drm->hdmi.crtc_id, drm->hdmi.bo->fb_id, 0, NULL);
+		ret = drmModePageFlip(drm->fd, drm->hdmi->crtc_id, drm->hdmi->bo->fb_id, 0, NULL);
 		if (ret && errno != EBUSY)
 			ALOGE("failed to perform page flip for hdmi (%s) (crtc %d fb %d))",
-					strerror(errno), drm->hdmi.crtc_id, drm->hdmi.bo->fb_id);
+					strerror(errno), drm->hdmi->crtc_id, drm->hdmi->bo->fb_id);
 	}
 
 	return ret;
@@ -487,18 +487,18 @@ static int drm_kms_page_flip(struct gralloc_drm_t *drm,
 	if (!bo)
 		return 0;
 
-	pthread_mutex_lock(&drm->hdmi_mutex);
+	pthread_mutex_lock(&drm->outputs_mutex);
 	drm_kms_blit_to_hdmi(drm, bo);
-	pthread_mutex_unlock(&drm->hdmi_mutex);
+	pthread_mutex_unlock(&drm->outputs_mutex);
 
 	/* set planes to be displayed */
 	gralloc_drm_set_planes(drm);
 
-	ret = drmModePageFlip(drm->fd, drm->primary.crtc_id, bo->fb_id,
+	ret = drmModePageFlip(drm->fd, drm->primary->crtc_id, bo->fb_id,
 			DRM_MODE_PAGE_FLIP_EVENT, (void *) drm);
 	if (ret) {
 		ALOGE("failed to perform page flip for primary (%s) (crtc %d fb %d))",
-			strerror(errno), drm->primary.crtc_id, bo->fb_id);
+			strerror(errno), drm->primary->crtc_id, bo->fb_id);
 		/* try to set mode for next frame */
 		if (errno != EBUSY)
 			drm->first_post = 1;
@@ -597,7 +597,7 @@ int gralloc_drm_bo_post(struct gralloc_drm_bo_t *bo)
 			bo = dst;
 		}
 
-		ret = drm_kms_set_crtc(drm, &drm->primary, bo->fb_id);
+		ret = drm_kms_set_crtc(drm, drm->primary, bo->fb_id);
 		if (!ret) {
 			drm->first_post = 0;
 			drm->current_front = bo;
@@ -605,10 +605,10 @@ int gralloc_drm_bo_post(struct gralloc_drm_bo_t *bo)
 				drm->next_front = NULL;
 		}
 
-		pthread_mutex_lock(&drm->hdmi_mutex);
-		if (drm->hdmi.active && drm->hdmi.output_mode == DRM_OUTPUT_CLONED && drm->hdmi.bo)
-			drm_kms_set_crtc(drm, &drm->hdmi, drm->hdmi.bo->fb_id);
-		pthread_mutex_unlock(&drm->hdmi_mutex);
+		pthread_mutex_lock(&drm->outputs_mutex);
+		if (drm->hdmi->active && drm->hdmi->output_mode == DRM_OUTPUT_CLONED && drm->hdmi->bo)
+			drm_kms_set_crtc(drm, drm->hdmi, drm->hdmi->bo->fb_id);
+		pthread_mutex_unlock(&drm->outputs_mutex);
 
 		return ret;
 	}
@@ -644,12 +644,12 @@ int gralloc_drm_bo_post(struct gralloc_drm_bo_t *bo)
 		break;
 	case DRM_SWAP_SETCRTC:
 		drm_kms_wait_for_post(drm, 0);
-		ret = drm_kms_set_crtc(drm, &drm->primary, bo->fb_id);
+		ret = drm_kms_set_crtc(drm, drm->primary, bo->fb_id);
 
-		pthread_mutex_lock(&drm->hdmi_mutex);
-		if (drm->hdmi.active && drm->hdmi.output_mode == DRM_OUTPUT_CLONED && drm->hdmi.bo)
-			drm_kms_set_crtc(drm, &drm->hdmi, drm->hdmi.bo->fb_id);
-		pthread_mutex_unlock(&drm->hdmi_mutex);
+		pthread_mutex_lock(&drm->outputs_mutex);
+		if (drm->hdmi->active && drm->hdmi->output_mode == DRM_OUTPUT_CLONED && drm->hdmi->bo)
+			drm_kms_set_crtc(drm, drm->hdmi, drm->hdmi->bo->fb_id);
+		pthread_mutex_unlock(&drm->outputs_mutex);
 
 		drm->current_front = bo;
 		break;
@@ -713,9 +713,9 @@ static void drm_kms_init_features(struct gralloc_drm_t *drm)
 
 		/* create the real front buffer */
 		front = gralloc_drm_bo_create(drm,
-					      drm->primary.mode.hdisplay,
-					      drm->primary.mode.vdisplay,
-					      drm->primary.fb_format,
+					      drm->primary->mode.hdisplay,
+					      drm->primary->mode.vdisplay,
+					      drm->primary->fb_format,
 					      GRALLOC_USAGE_HW_FB);
 		if (front && gralloc_drm_bo_add_fb(front)) {
 			gralloc_drm_bo_decref(front);
@@ -1015,8 +1015,8 @@ static int drm_kms_init_with_connector(struct gralloc_drm_t *drm,
 				connector->modes[0].name);
 	}
 
-	if (property_get_bool("persist.remixos.disp_best_fit", 1) && output != &drm->primary) {
-		mode = find_mode(connector, &bpp, &drm->primary.mode);
+	if (drm->primary && output != drm->primary && property_get_bool("persist.remixos.disp_best_fit", 1)) {
+		mode = find_mode(connector, &bpp, &drm->primary->mode);
 	} else {
 		mode = find_mode(connector, &bpp, NULL);
 	}
@@ -1053,6 +1053,28 @@ static int drm_kms_init_with_connector(struct gralloc_drm_t *drm,
 	return 0;
 }
 
+static struct gralloc_drm_output*
+drm_kms_init_with_new_connector(struct gralloc_drm_t *drm, drmModeConnectorPtr connector)
+{
+	struct gralloc_drm_output *output = NULL;
+
+	for (int i=0;i<drm->output_capacity;i++) {
+		if (!drm->outputs[i].active) {
+			output = &drm->outputs[i];
+			break;
+		}
+	}
+
+	if (output && !drm_kms_init_with_connector(drm, output, connector)) {
+		drm->output_count++;
+		if (!drm->primary) {
+			drm->primary = output;
+		}
+	}
+
+	return output;
+}
+
 
 /*
  * Fetch a connector of particular type
@@ -1079,6 +1101,22 @@ static drmModeConnectorPtr fetch_connector(struct gralloc_drm_t *drm,
 	return NULL;
 }
 
+static int init_connectors(struct gralloc_drm_t *drm)
+{
+	if (!drm->resources)
+		return -1;
+
+	drm->output_capacity = drm->resources->count_connectors;
+	drm->output_count = 0;
+
+	drm->outputs = malloc(sizeof(*drm->outputs) * drm->output_capacity);
+	memset(drm->outputs, 0, sizeof(*drm->outputs) * drm->output_capacity);
+
+	drm->hdmi = &drm->outputs[1];
+
+	return 0;
+}
+
 
 /*
  * Initializes hdmi output with a connector and allocates
@@ -1088,25 +1126,25 @@ static drmModeConnectorPtr fetch_connector(struct gralloc_drm_t *drm,
 static int init_hdmi_output(struct gralloc_drm_t *drm,
 	drmModeConnectorPtr connector)
 {
-	drm_kms_init_with_connector(drm, &drm->hdmi, connector);
+	drm_kms_init_with_connector(drm, drm->hdmi, connector);
 
 	ALOGD("%s, allocate private buffer for hdmi [%dx%d]",
-		__func__, drm->hdmi.mode.hdisplay, drm->hdmi.mode.vdisplay);
+		__func__, drm->hdmi->mode.hdisplay, drm->hdmi->mode.vdisplay);
 
-	drm->hdmi.bo = gralloc_drm_bo_create(drm,
-		drm->hdmi.mode.hdisplay, drm->hdmi.mode.vdisplay,
-		drm->hdmi.fb_format,
+	drm->hdmi->bo = gralloc_drm_bo_create(drm,
+		drm->hdmi->mode.hdisplay, drm->hdmi->mode.vdisplay,
+		drm->hdmi->fb_format,
 		GRALLOC_USAGE_HW_RENDER);
 
-	int err = gralloc_drm_bo_add_fb(drm->hdmi.bo);
+	int err = gralloc_drm_bo_add_fb(drm->hdmi->bo);
 	if (err) {
 		ALOGE("%s: could not create drm fb, (%s)",
 			__func__, strerror(-err));
 		return err;
 	}
 
-	drm->hdmi.output_mode = DRM_OUTPUT_CLONED;
-	drm->hdmi.active = 1;
+	drm->hdmi->output_mode = DRM_OUTPUT_CLONED;
+	drm->hdmi->active = 1;
 
 	return 0;
 }
@@ -1141,7 +1179,7 @@ static void *hdmi_observer(void *data)
 
 		if (!strcmp(event.path, "devices/virtual/switch/hdmi")) {
 			if (event.switchstate != -1) {
-				pthread_mutex_lock(&drm->hdmi_mutex);
+				pthread_mutex_lock(&drm->outputs_mutex);
 
 				if (event.switchstate) {
 					hdmi = fetch_connector(drm, DRM_MODE_CONNECTOR_HDMIA);
@@ -1155,42 +1193,42 @@ static void *hdmi_observer(void *data)
 						drmModeFreeConnector(hdmi);
 					}
 				} else {
-					drm->hdmi.active = 0;
+					drm->hdmi->active = 0;
 					used_crtcs &= ~(1 << drm->hdmi.pipe);
 
 					ALOGD("destroy hdmi private buffer");
-					gralloc_drm_bo_decref(drm->hdmi.bo);
-					drm->hdmi.bo = NULL;
+					gralloc_drm_bo_decref(drm->hdmi->bo);
+					drm->hdmi->bo = NULL;
 				}
 
-				pthread_mutex_unlock(&drm->hdmi_mutex);
+				pthread_mutex_unlock(&drm->outputs_mutex);
 			}
 		} else if (!strcmp(event.subsystem, "drm") &&
 				!strcmp(event.device_name, "dri/card0") && event.hotplug) {
-			pthread_mutex_lock(&drm->hdmi_mutex);
+			pthread_mutex_lock(&drm->outputs_mutex);
 
 			hdmi = fetch_connector(drm, DRM_MODE_CONNECTOR_HDMIA);
-			if (hdmi && !drm->hdmi.active) {
+			if (hdmi && !drm->hdmi->active) {
 				ALOGD("init hdmi on hotplug event");
 				if (!init_hdmi_output(drm, hdmi)) {
-					drm_kms_set_crtc(drm, &drm->hdmi, drm->hdmi.bo->fb_id);
+					drm_kms_set_crtc(drm, drm->hdmi, drm->hdmi->bo->fb_id);
 				}
 
 				/* will trigger modeset */
 				drm->first_post = 1;
-			} else if (!hdmi && drm->hdmi.active) {
-				drm->hdmi.active = 0;
+			} else if (!hdmi && drm->hdmi->active) {
+				drm->hdmi->active = 0;
 				used_crtcs &= ~(1 << drm->hdmi.pipe);
 
 				ALOGD("destroy hdmi private buffer");
-				gralloc_drm_bo_decref(drm->hdmi.bo);
-				drm->hdmi.bo = NULL;
+				gralloc_drm_bo_decref(drm->hdmi->bo);
+				drm->hdmi->bo = NULL;
 			}
 
 			if (hdmi)
 				drmModeFreeConnector(hdmi);
 
-			pthread_mutex_unlock(&drm->hdmi_mutex);
+			pthread_mutex_unlock(&drm->outputs_mutex);
 		}
 	}
 
@@ -1241,16 +1279,18 @@ int gralloc_drm_init_kms(struct gralloc_drm_t *drm)
 		}
 	}
 
+	init_connectors(drm);
+
 	/* find the crtc/connector/mode to use */
 	lvds = fetch_connector(drm, DRM_MODE_CONNECTOR_LVDS);
 	if (lvds) {
-		drm_kms_init_with_connector(drm, &drm->primary, lvds);
+		drm_kms_init_with_new_connector(drm, lvds);
 		drmModeFreeConnector(lvds);
-		drm->primary.active = 1;
+		drm->primary->active = 1;
 	}
 
 	/* if still no connector, find first connected connector and try it */
-	if (!drm->primary.active) {
+	if (!drm->primary) {
 
 		for (i = 0; i < drm->resources->count_connectors; i++) {
 			drmModeConnectorPtr connector;
@@ -1259,9 +1299,10 @@ int gralloc_drm_init_kms(struct gralloc_drm_t *drm)
 					drm->resources->connectors[i]);
 			if (connector) {
 				if (connector->connection == DRM_MODE_CONNECTED) {
-					if (!drm_kms_init_with_connector(drm,
-							&drm->primary, connector))
+					if (drm_kms_init_with_new_connector(drm, connector)){
+						drm->primary->active = 1;
 						break;
+					}
 				}
 
 				drmModeFreeConnector(connector);
@@ -1286,7 +1327,7 @@ int gralloc_drm_init_kms(struct gralloc_drm_t *drm)
 	hdmi = fetch_connector(drm, DRM_MODE_CONNECTOR_HDMIA);
 	if (hdmi) {
 
-		if (hdmi->connector_id == drm->primary.connector_id) {
+		if (hdmi->connector_id == drm->primary->connector_id) {
 			/* special case: our primary connector is hdmi */
 			ALOGD("hdmi is the primary connector");
 			goto skip_hdmi_modes;
@@ -1299,8 +1340,8 @@ int gralloc_drm_init_kms(struct gralloc_drm_t *drm)
 	}
 
 	/* launch hdmi observer thread */
-	pthread_mutex_init(&drm->hdmi_mutex, NULL);
-	pthread_create(&drm->hdmi_hotplug_thread, NULL, hdmi_observer, drm);
+	pthread_mutex_init(&drm->outputs_mutex, NULL);
+	pthread_create(&drm->hotplug_thread, NULL, hdmi_observer, drm);
 
 skip_hdmi_modes:
 
@@ -1351,8 +1392,10 @@ void gralloc_drm_fini_kms(struct gralloc_drm_t *drm)
 	}
 
 	/* destroy private buffer of hdmi output */
-	if (drm->hdmi.bo)
-		gralloc_drm_bo_decref(drm->hdmi.bo);
+	if (drm->hdmi->bo)
+		gralloc_drm_bo_decref(drm->hdmi->bo);
+
+	free(drm->outputs);
 
 	drm_singleton = NULL;
 }
@@ -1369,14 +1412,14 @@ void gralloc_drm_get_kms_info(struct gralloc_drm_t *drm,
 		struct framebuffer_device_t *fb)
 {
 	*((uint32_t *) &fb->flags) = 0x0;
-	*((uint32_t *) &fb->width) = drm->primary.mode.hdisplay;
-	*((uint32_t *) &fb->height) = drm->primary.mode.vdisplay;
-	*((int *)      &fb->stride) = drm->primary.mode.hdisplay;
-	*((float *)    &fb->fps) = drm->primary.mode.vrefresh;
+	*((uint32_t *) &fb->width) = drm->primary->mode.hdisplay;
+	*((uint32_t *) &fb->height) = drm->primary->mode.vdisplay;
+	*((int *)      &fb->stride) = drm->primary->mode.hdisplay;
+	*((float *)    &fb->fps) = drm->primary->mode.vrefresh;
 
-	*((int *)      &fb->format) = drm->primary.fb_format;
-	*((float *)    &fb->xdpi) = drm->primary.xdpi;
-	*((float *)    &fb->ydpi) = drm->primary.ydpi;
+	*((int *)      &fb->format) = drm->primary->fb_format;
+	*((float *)    &fb->xdpi) = drm->primary->xdpi;
+	*((float *)    &fb->ydpi) = drm->primary->ydpi;
 	*((int *)      &fb->minSwapInterval) = drm->swap_interval;
 	*((int *)      &fb->maxSwapInterval) = drm->swap_interval;
 }

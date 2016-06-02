@@ -98,12 +98,14 @@ struct gralloc_drm_t {
 
 	/* initialized by gralloc_drm_init_kms */
 	drmModeResPtr resources;
-	struct gralloc_drm_output primary;
-	struct gralloc_drm_output hdmi;
 
-	/* hdmi hotplug */
-	pthread_mutex_t hdmi_mutex;
-	pthread_t hdmi_hotplug_thread;
+	struct gralloc_drm_output *outputs;
+	int output_count, output_capacity;
+
+	struct gralloc_drm_output *primary, *hdmi;
+
+	pthread_mutex_t outputs_mutex;
+	pthread_t hotplug_thread;
 
 #ifdef DRM_MODE_FEATURE_DIRTYFB
 	drmModeClip clip;
