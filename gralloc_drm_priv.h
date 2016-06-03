@@ -102,7 +102,7 @@ struct gralloc_drm_t {
 	struct gralloc_drm_output *outputs;
 	int output_count, output_capacity;
 
-	struct gralloc_drm_output *primary, *hdmi;
+	struct gralloc_drm_output *primary;
 
 	pthread_mutex_t outputs_mutex;
 	pthread_t hotplug_thread;
