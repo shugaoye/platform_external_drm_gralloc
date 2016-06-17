@@ -838,13 +838,41 @@ static drmModeModeInfoPtr generate_mode(int h_pixels, int v_lines, float freq)
 	return (m);
 }
 
-static drmModeModeInfoPtr find_mode(drmModeConnectorPtr connector, int *bpp)
+static int mode_distance_best_fit(
+		int xres_base,
+		int yres_base,
+		int xres,
+		int yres,
+		double prefered_aspect)
+{
+	const double eps = 0.3;
+
+	if (xres_base > xres || yres_base > yres) {
+		// if the res cannot cover base res, return max int
+		return INT_MAX;
+	} else if (fabs((double) xres / yres - prefered_aspect) > eps) {
+		// if the aspect is too different with prefered_aspect, return max int
+		return INT_MAX;
+	} else {
+		return (xres - xres_base) * (xres - xres_base) +
+				(yres - yres_base) * (yres - yres_base) +
+				((xres / yres) - prefered_aspect) * ((xres / yres) - prefered_aspect);
+	}
+}
+
+static int mode_distance_closest(int xres_base, int yres_base, int xres, int yres) {
+	return (xres - xres_base) * (xres - xres_base) +
+			(yres - yres_base) * (yres - yres_base);
+}
+
+static drmModeModeInfoPtr find_mode(drmModeConnectorPtr connector, int *bpp, drmModeModeInfoPtr primary_mode)
 {
 	char value[PROPERTY_VALUE_MAX];
 	drmModeModeInfoPtr mode;
 	int dist, i;
 	int xres = 0, yres = 0, rate = 0;
 	int forcemode = 0;
+	int bestfit = 0;
 
 	if (property_get("debug.drm.mode", value, NULL)) {
 		char *p = value, *end;
@@ -875,6 +903,12 @@ static drmModeModeInfoPtr find_mode(drmModeConnectorPtr connector, int *bpp)
 			ALOGI("will use %dx%d@%dHz", xres, yres, rate);
 			forcemode = 1;
 		}
+	} else if (primary_mode != NULL) {
+		xres = primary_mode->hdisplay;
+		yres = primary_mode->vdisplay;
+		*bpp = 0;
+		bestfit = 1;
+		ALOGI("will find the best fit for %dx%d", xres, yres);
 	} else {
 		*bpp = 0;
 	}
@@ -890,8 +924,16 @@ static drmModeModeInfoPtr find_mode(drmModeConnectorPtr connector, int *bpp)
 			int tmp;
 
 			if (xres && yres) {
-				tmp = (m->hdisplay - xres) * (m->hdisplay - xres) +
-					(m->vdisplay - yres) * (m->vdisplay - yres);
+				if (bestfit) {
+					tmp = mode_distance_best_fit(
+							xres,
+							yres,
+							m->hdisplay,
+							m->vdisplay,
+							(double) connector->modes[0].hdisplay / connector->modes[0].vdisplay);
+				} else {
+					tmp = mode_distance_closest(xres, yres, m->hdisplay, m->vdisplay);
+				}
 			}
 			else {
 				/* use the first preferred mode */
@@ -921,6 +963,8 @@ static drmModeModeInfoPtr find_mode(drmModeConnectorPtr connector, int *bpp)
 	return mode;
 }
 
+static int used_crtcs = 0;
+
 /*
  * Initialize KMS with a connector.
  */
@@ -929,7 +973,6 @@ static int drm_kms_init_with_connector(struct gralloc_drm_t *drm,
 {
 	drmModeEncoderPtr encoder;
 	drmModeModeInfoPtr mode;
-	static int used_crtcs = 0;
 	int bpp, i;
 
 	if (!connector->count_modes)
@@ -972,7 +1015,11 @@ static int drm_kms_init_with_connector(struct gralloc_drm_t *drm,
 				connector->modes[0].name);
 	}
 
-	mode = find_mode(connector, &bpp);
+	if (property_get_bool("persist.remixos.disp_best_fit", 1) && output != &drm->primary) {
+		mode = find_mode(connector, &bpp, &drm->primary.mode);
+	} else {
+		mode = find_mode(connector, &bpp, NULL);
+	}
 
 	ALOGI("the best mode is %s", mode->name);
 
@@ -1109,6 +1156,7 @@ static void *hdmi_observer(void *data)
 					}
 				} else {
 					drm->hdmi.active = 0;
+					used_crtcs &= ~(1 << drm->hdmi.pipe);
 
 					ALOGD("destroy hdmi private buffer");
 					gralloc_drm_bo_decref(drm->hdmi.bo);
@@ -1132,6 +1180,7 @@ static void *hdmi_observer(void *data)
 				drm->first_post = 1;
 			} else if (!hdmi && drm->hdmi.active) {
 				drm->hdmi.active = 0;
+				used_crtcs &= ~(1 << drm->hdmi.pipe);
 
 				ALOGD("destroy hdmi private buffer");
 				gralloc_drm_bo_decref(drm->hdmi.bo);
