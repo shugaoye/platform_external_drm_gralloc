@@ -93,10 +93,10 @@ init_drv_from_fd(int fd)
 		} else
 #endif
 #ifdef ENABLE_PIPE
-		if (!drv) {
+		{
 			drv = gralloc_drm_drv_create_for_pipe(fd, version->name);
 			ALOGI_IF(drv, "create pipe for driver %s", version->name);
-		} else
+		}
 #endif
 		if (!drv) {
 			ALOGE("unsupported driver: %s", (version->name) ?
